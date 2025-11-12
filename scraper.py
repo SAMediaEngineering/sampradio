@@ -3,20 +3,24 @@ from bs4 import BeautifulSoup
 from supabase import create_client, Client
 import time
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # Supabase credentials
 SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhtYnFnZHF1aWtlc3lzYXNwc2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgzNDAzNjQsImV4cCI6MjA3MzkxNjM2NH0.MkPeVmG6pEonpgW01RuVP4xMZtWAer1qy3ASM5iye4Y"
 
-# Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# How far back to check for duplicates
-DUPLICATE_CHECK_HOURS = 24
+# --- STATIONS TO SCRAPE ---
+STATIONS = {
+    "5FM": "https://player.listenlive.co/71331/en/songhistory",
+    "947": "https://player.listenlive.co/45771/en/songhistory",
+    "KFM 94.5": "https://player.listenlive.co/45781/en/songhistory",
+    "RSG": "https://player.listenlive.co/71471/en/songhistory",
+}
 
-def fetch_5fm_history():
-    url = "https://player.listenlive.co/71331/en/songhistory"
+# --- FETCH SONGS FOR A GIVEN STATION ---
+def fetch_station_history(station_name, url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                       "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -24,70 +28,77 @@ def fetch_5fm_history():
     }
 
     try:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
     except requests.RequestException as e:
-        print("Error fetching 5FM page:", e)
+        print(f"Error fetching {station_name}: {e}")
         return []
 
     soup = BeautifulSoup(response.text, "html.parser")
     songs = []
 
-    scripts = soup.find_all("script")
-    for s in scripts:
-        if "var songs =" in s.text:
-            start = s.text.find("var songs =") + len("var songs =")
-            end = s.text.find("];", start) + 1
-            songs_json = s.text[start:end].strip()
+    for script in soup.find_all("script"):
+        if "var songs =" in script.text:
+            start = script.text.find("var songs =") + len("var songs =")
+            end = script.text.find("];", start) + 1
+            songs_json = script.text[start:end].strip()
             try:
                 songs_list = json.loads(songs_json)
                 for song in songs_list:
-                    play_time = datetime.fromtimestamp(
-                        song.get("timestamp", int(time.time() * 1000)) / 1000
-                    )
                     songs.append({
-                        "station_name": "5FM",
+                        "station_name": station_name,
                         "song_title": song.get("title", "Unknown Title"),
                         "artist_name": song.get("artist", "Unknown Artist"),
-                        "play_time": play_time.isoformat(),
+                        "play_time": datetime.fromtimestamp(
+                            song.get("timestamp", int(time.time() * 1000)) / 1000
+                        ).isoformat(),
                         "created_at": datetime.utcnow().isoformat()
                     })
-            except json.JSONDecodeError as e:
-                print("Failed to decode songs JSON:", e)
+            except json.JSONDecodeError:
+                print(f"Failed to decode songs JSON for {station_name}")
             break
+
+    print(f"Fetched {len(songs)} songs from {station_name}")
     return songs
 
-def insert_to_supabase(songs):
-    if not songs:
-        print("No songs to insert.")
+# --- INSERT NEW SONGS INTO SUPABASE ---
+def insert_to_supabase(all_songs):
+    if not all_songs:
+        print("No songs found to insert.")
         return
 
-    # Define cutoff time for duplicates
-    cutoff_time = datetime.utcnow() - timedelta(hours=DUPLICATE_CHECK_HOURS)
-    cutoff_iso = cutoff_time.isoformat()
+    # Fetch all existing records
+    existing = supabase.table("Test123Airplay").select(
+        "station_name,song_title,artist_name,play_time"
+    ).execute()
 
-    # Fetch recent songs from Supabase to avoid duplicates
-    recent_songs = supabase.table("Test123Airplay") \
-        .select("song_title, artist_name, play_time") \
-        .gte("play_time", cutoff_iso) \
-        .execute()
+    existing_set = set()
+    if existing.data:
+        existing_set = set(
+            (row["station_name"], row["song_title"], row["artist_name"], row["play_time"])
+            for row in existing.data
+        )
 
-    existing = {(row["song_title"], row["artist_name"], row["play_time"]) for row in recent_songs.data}
-
-    # Filter new songs
     new_songs = [
-        song for song in songs
-        if (song["song_title"], song["artist_name"], song["play_time"]) not in existing
+        song for song in all_songs
+        if (song["station_name"], song["song_title"], song["artist_name"], song["play_time"]) not in existing_set
     ]
 
     if not new_songs:
-        print("No new songs to insert.")
+        print("No new songs to insert — all already exist.")
         return
 
-    # Bulk insert new songs
     res = supabase.table("Test123Airplay").insert(new_songs).execute()
-    print(f"Inserted {len(new_songs)} new songs.")
+    if res.data:
+        print(f"✅ Inserted {len(new_songs)} new songs:")
+        for song in new_songs:
+            print(f"  - {song['station_name']}: {song['song_title']} – {song['artist_name']}")
+    else:
+        print(f"❌ Failed to insert. Response: {res.data}")
 
+# --- MAIN ---
 if __name__ == "__main__":
-    songs = fetch_5fm_history()
-    insert_to_supabase(songs)
+    all_songs = []
+    for name, url in STATIONS.items():
+        all_songs.extend(fetch_station_history(name, url))
+    insert_to_supabase(all_songs)
