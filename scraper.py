@@ -48,5 +48,10 @@ def scrape_station(station_name, url, song_selector, artist_selector):
 
 # CSS selectors for each station (update if website changes)
 scrape_station("Metro FM", "https://metrofm.co.za/nowplaying", ".now-playing-song", ".now-playing-artist")
-scrape_station("5FM", "https://5fm.co.za/nowplaying", ".now-playing-song", ".now-playing-artist")
+scrape_station(
+    "5FM",
+    "http://listen.5fm.co.za/listen5fm/",
+    ".td-player-bar__nowplaying__trackinfo__track-name span",  # update with real song selector
+    "#td-player-bar__nowplaying__trackinfo__artist-name span"
+)
 scrape_station("947", "https://www.947.co.za/nowplaying", ".now-playing-song", ".now-playing-artist")
