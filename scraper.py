@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup
 from supabase import create_client, Client
 import time
 import json
+from datetime import datetime
 
 # Supabase credentials
 SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
@@ -39,9 +40,11 @@ def fetch_5fm_history():
                 songs_list = json.loads(songs_json)
                 for song in songs_list:
                     songs.append({
-                        "title": song.get("title", "Unknown Title"),
-                        "artist": song.get("artist", "Unknown Artist"),
-                        "timestamp": song.get("timestamp", int(time.time() * 1000))
+                        "station_name": "5FM",
+                        "song_title": song.get("title", "Unknown Title"),
+                        "artist_name": song.get("artist", "Unknown Artist"),
+                        "play_time": datetime.fromtimestamp(song.get("timestamp", int(time.time() * 1000)) / 1000),
+                        "created_at": datetime.utcnow()
                     })
             except json.JSONDecodeError as e:
                 print("Failed to decode songs JSON:", e)
@@ -53,9 +56,9 @@ def insert_to_supabase(songs):
         print("No songs to insert.")
         return
     for song in songs:
-        res = supabase.table("airplay_5fm").insert(song).execute()
+        res = supabase.table("Test123Airplay").insert(song).execute()
         if res.status_code == 201:
-            print(f"Inserted: {song['title']} – {song['artist']}")
+            print(f"Inserted: {song['song_title']} – {song['artist_name']}")
         else:
             print(f"Failed to insert: {song}, Response: {res.data}")
 
