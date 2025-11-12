@@ -1,6 +1,9 @@
 import requests
 from bs4 import BeautifulSoup
 from supabase import create_client, Client
+import time
+import json
+from datetime import datetime
 
 # Supabase credentials
 SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
@@ -8,52 +11,94 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# KFM live page
-URL = "https://www.radio-south-africa.co.za/kfm"
-
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36"
+# --- STATIONS TO SCRAPE ---
+STATIONS = {
+    "5FM": "https://player.listenlive.co/71331/en/songhistory",
+    "947": "https://player.listenlive.co/45771/en/songhistory",
+    "KFM 94.5": "https://player.listenlive.co/45781/en/songhistory",
+    "RSG": "https://player.listenlive.co/71471/en/songhistory",
 }
 
-response = requests.get(URL, headers=headers)
-soup = BeautifulSoup(response.text, "html.parser")
-
-songs_data = []
-
-# Grab the current live song
-current_song_div = soup.select_one(".current-song, .live-song")
-if current_song_div:
-    song_name = current_song_div.find("p")
-    artist_name = current_song_div.find("span", class_="artist-name")
-    song_info = {
-        "song_name": song_name.text.strip() if song_name else None,
-        "artist": artist_name.text.strip() if artist_name else None,
-        "time": "LIVE",
-        "link": None,
-        "image": None
+# --- FETCH SONGS FOR A GIVEN STATION ---
+def fetch_station_history(station_name, url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/118.0.5993.118 Safari/537.36"
     }
-    songs_data.append(song_info)
 
-# Grab previous songs
-history_songs = soup.select(".history-song")
-for hs in history_songs:
-    song_name_el = hs.find("span", class_="song-name")
-    artist_name_el = hs.find("span", class_="artist-name")
-    timestamp_el = hs.find("span", class_="time-stamp")
-    link_el = hs.find("a", href=True)
-    image_el = hs.find("img", src=True)
+    try:
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        print(f"Error fetching {station_name}: {e}")
+        return []
 
-    song_info = {
-        "song_name": song_name_el.get_text(strip=True) if song_name_el else None,
-        "artist": artist_name_el.get_text(strip=True) if artist_name_el else None,
-        "time": timestamp_el.get_text(strip=True) if timestamp_el else None,
-        "link": link_el["href"] if link_el else None,
-        "image": image_el["src"] if image_el else None
-    }
-    songs_data.append(song_info)
+    soup = BeautifulSoup(response.text, "html.parser")
+    songs = []
 
-# Insert into Supabase table (table name: 'kfm_songs')
-for song in songs_data:
-    supabase.table("kfm_songs").upsert(song).execute()
+    for script in soup.find_all("script"):
+        if "var songs =" in script.text:
+            start = script.text.find("var songs =") + len("var songs =")
+            end = script.text.find("];", start) + 1
+            songs_json = script.text[start:end].strip()
+            try:
+                songs_list = json.loads(songs_json)
+                for song in songs_list:
+                    songs.append({
+                        "station_name": station_name,
+                        "song_title": song.get("title", "Unknown Title"),
+                        "artist_name": song.get("artist", "Unknown Artist"),
+                        "play_time": datetime.fromtimestamp(
+                            song.get("timestamp", int(time.time() * 1000)) / 1000
+                        ).isoformat(),
+                        "created_at": datetime.utcnow().isoformat()
+                    })
+            except json.JSONDecodeError:
+                print(f"Failed to decode songs JSON for {station_name}")
+            break
 
-print(f"Inserted {len(songs_data)} songs into Supabase.")
+    print(f"Fetched {len(songs)} songs from {station_name}")
+    return songs
+
+# --- INSERT NEW SONGS INTO SUPABASE ---
+def insert_to_supabase(all_songs):
+    if not all_songs:
+        print("No songs found to insert.")
+        return
+
+    # Fetch all existing records
+    existing = supabase.table("Test123Airplay").select(
+        "station_name,song_title,artist_name,play_time"
+    ).execute()
+
+    existing_set = set()
+    if existing.data:
+        existing_set = set(
+            (row["station_name"], row["song_title"], row["artist_name"], row["play_time"])
+            for row in existing.data
+        )
+
+    new_songs = [
+        song for song in all_songs
+        if (song["station_name"], song["song_title"], song["artist_name"], song["play_time"]) not in existing_set
+    ]
+
+    if not new_songs:
+        print("No new songs to insert — all already exist.")
+        return
+
+    res = supabase.table("Test123Airplay").insert(new_songs).execute()
+    if res.data:
+        print(f"✅ Inserted {len(new_songs)} new songs:")
+        for song in new_songs:
+            print(f"  - {song['station_name']}: {song['song_title']} – {song['artist_name']}")
+    else:
+        print(f"❌ Failed to insert. Response: {res.data}")
+
+# --- MAIN ---
+if __name__ == "__main__":
+    all_songs = []
+    for name, url in STATIONS.items():
+        all_songs.extend(fetch_station_history(name, url))
+    insert_to_supabase(all_songs)
