@@ -1,23 +1,27 @@
 import requests
-from bs4 import BeautifulSoup
 
-url_5fm = "http://listen.5fm.co.za/listen5fm/"
+def fetch_5fm_history():
+    url = "https://player.listenlive.co/71331/en/songhistory"
+    
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # raise an error if request failed
+    except requests.RequestException as e:
+        print("Error fetching 5FM history:", e)
+        return
 
-try:
-    # Fetch the page (ignore SSL for now)
-    response = requests.get(url_5fm, verify=False)
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # Find artist and song
-    artist_tag = soup.select_one("#td-player-bar__nowplaying__trackinfo__artist-name span")
-    song_tag = soup.select_one("#td-player-bar__nowplaying__trackinfo__cue-title span")
-
-    if artist_tag and song_tag:
-        artist = artist_tag.text.strip()
-        song = song_tag.text.strip()
-        print(f"5FM Now Playing: {artist} - {song}")
-    else:
+    data = response.json()
+    songs = data.get('songs', [])
+    
+    if not songs:
         print("No song/artist currently found for 5FM")
+        return
 
-except Exception as e:
-    print(f"Error scraping 5FM: {e}")
+    print("Last songs played on 5FM:\n")
+    for s in songs:
+        title = s.get('title', 'Unknown Title')
+        artist = s.get('artist', 'Unknown Artist')
+        print(f"{title} – {artist}")
+
+if __name__ == "__main__":
+    fetch_5fm_history()
