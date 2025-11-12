@@ -12,7 +12,7 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- STATIONS TO SCRAPE ---
-stations = {
+STATIONS = {
     "947": "https://www.radio-south-africa.co.za/947.html",
     "Metro FM": "https://www.radio-south-africa.co.za/metro-fm.html",
     "Ukhozi FM": "https://www.radio-south-africa.co.za/ukhozi-fm.html",
