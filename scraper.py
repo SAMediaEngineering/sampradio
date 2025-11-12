@@ -30,7 +30,6 @@ def fetch_5fm_history():
     soup = BeautifulSoup(response.text, "html.parser")
     songs = []
 
-    # Extract songs JSON from <script>
     scripts = soup.find_all("script")
     for s in scripts:
         if "var songs =" in s.text:
@@ -52,15 +51,14 @@ def fetch_5fm_history():
             break
     return songs
 
-def insert_to_supabase(songs):
+def insert_new_songs_only(songs):
     if not songs:
         print("No songs to insert.")
         return
 
-    inserted_count = 0
-
+    new_songs = []
     for song in songs:
-        # Check if song already exists
+        # Check if this exact play already exists
         existing = supabase.table("Test123Airplay") \
             .select("id") \
             .eq("station_name", song["station_name"]) \
@@ -69,17 +67,15 @@ def insert_to_supabase(songs):
             .eq("play_time", song["play_time"]) \
             .execute()
 
-        if existing.data and len(existing.data) > 0:
-            # Skip duplicate
-            continue
+        if not existing.data or len(existing.data) == 0:
+            new_songs.append(song)  # Only append if not already in DB
 
-        # Insert new song
-        res = supabase.table("Test123Airplay").insert(song).execute()
-        if res.data:
-            inserted_count += 1
-
-    print(f"Inserted {inserted_count} new songs out of {len(songs)} fetched.")
+    if new_songs:
+        supabase.table("Test123Airplay").insert(new_songs).execute()
+        print(f"Inserted {len(new_songs)} new songs.")
+    else:
+        print("No new songs to insert; all fetched songs already exist.")
 
 if __name__ == "__main__":
     songs = fetch_5fm_history()
-    insert_to_supabase(songs)
+    insert_new_songs_only(songs)
