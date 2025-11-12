@@ -12,11 +12,12 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # --- STATIONS TO SCRAPE ---
-STATIONS = {
-    "5FM": "https://player.listenlive.co/71331/en/songhistory",
-    "947": "https://player.listenlive.co/45771/en/songhistory",
-    "KFM 94.5": "https://player.listenlive.co/45781/en/songhistory",
-    "RSG": "https://player.listenlive.co/71471/en/songhistory",
+stations = {
+    "947": "https://www.radio-south-africa.co.za/947.html",
+    "Metro FM": "https://www.radio-south-africa.co.za/metro-fm.html",
+    "Ukhozi FM": "https://www.radio-south-africa.co.za/ukhozi-fm.html",
+    "KFM 94.5": "https://www.radio-south-africa.co.za/kfm-945.html",
+    "RSG": "https://www.radio-south-africa.co.za/rsg.html"
 }
 
 # --- FETCH SONGS FOR A GIVEN STATION ---
