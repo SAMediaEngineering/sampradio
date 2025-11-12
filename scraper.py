@@ -1,6 +1,7 @@
 import requests
+from bs4 import BeautifulSoup
 
-def fetch_5fm_history():
+def fetch_5fm_history_html():
     url = "https://player.listenlive.co/71331/en/songhistory"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -10,37 +11,32 @@ def fetch_5fm_history():
 
     try:
         response = requests.get(url, headers=headers)
-        response.raise_for_status()  # raise an error if request failed
+        response.raise_for_status()
     except requests.RequestException as e:
-        print("Error fetching 5FM history:", e)
+        print("Error fetching 5FM page:", e)
         return
 
-    # Preview response to debug if it's not JSON
-    if not response.text.strip():
-        print("Empty response from 5FM endpoint.")
-        return
-    if not response.text.strip().startswith("{"):
-        print("Unexpected response format (not JSON):")
-        print(response.text[:500])  # show first 500 characters
-        return
+    soup = BeautifulSoup(response.text, "html.parser")
 
-    try:
-        data = response.json()
-    except ValueError as e:
-        print("Failed to decode JSON:", e)
-        print("Response preview:", response.text[:500])
-        return
+    # Find song history container (adjust selectors if needed)
+    # Inspect the page in browser to confirm structure
+    songs = []
 
-    songs = data.get('songs', [])
+    # Example: look for divs/spans containing title and artist
+    for item in soup.select(".song-history-item"):  # adjust selector
+        title_tag = item.select_one(".song-title")  # adjust selector
+        artist_tag = item.select_one(".song-artist")  # adjust selector
+        title = title_tag.get_text(strip=True) if title_tag else "Unknown Title"
+        artist = artist_tag.get_text(strip=True) if artist_tag else "Unknown Artist"
+        songs.append((title, artist))
+
     if not songs:
-        print("No song/artist currently found for 5FM")
+        print("No songs found on 5FM page.")
         return
 
     print("Last songs played on 5FM:\n")
-    for s in songs:
-        title = s.get('title', 'Unknown Title')
-        artist = s.get('artist', 'Unknown Artist')
+    for title, artist in songs:
         print(f"{title} – {artist}")
 
 if __name__ == "__main__":
-    fetch_5fm_history()
+    fetch_5fm_history_html()
