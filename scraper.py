@@ -3,14 +3,17 @@ from bs4 import BeautifulSoup
 from supabase import create_client, Client
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Supabase credentials
 SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhtYnFnZHF1aWtlc3lzYXNwc2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgzNDAzNjQsImV4cCI6MjA3MzkxNjM2NH0.MkPeVmG6pEonpgW01RuVP4xMZtWAer1qy3ASM5iye4Y"
+SUPABASE_KEY = "YOUR_ANON_KEY"
 
 # Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# How far back to check for duplicates
+DUPLICATE_CHECK_HOURS = 24
 
 def fetch_5fm_history():
     url = "https://player.listenlive.co/71331/en/songhistory"
@@ -39,11 +42,14 @@ def fetch_5fm_history():
             try:
                 songs_list = json.loads(songs_json)
                 for song in songs_list:
+                    play_time = datetime.fromtimestamp(
+                        song.get("timestamp", int(time.time() * 1000)) / 1000
+                    )
                     songs.append({
                         "station_name": "5FM",
                         "song_title": song.get("title", "Unknown Title"),
                         "artist_name": song.get("artist", "Unknown Artist"),
-                        "play_time": datetime.fromtimestamp(song.get("timestamp", int(time.time() * 1000)) / 1000).isoformat(),
+                        "play_time": play_time.isoformat(),
                         "created_at": datetime.utcnow().isoformat()
                     })
             except json.JSONDecodeError as e:
@@ -51,31 +57,37 @@ def fetch_5fm_history():
             break
     return songs
 
-def insert_new_songs_only(songs):
+def insert_to_supabase(songs):
     if not songs:
         print("No songs to insert.")
         return
 
-    new_songs = []
-    for song in songs:
-        # Check if this exact play already exists
-        existing = supabase.table("Test123Airplay") \
-            .select("id") \
-            .eq("station_name", song["station_name"]) \
-            .eq("song_title", song["song_title"]) \
-            .eq("artist_name", song["artist_name"]) \
-            .eq("play_time", song["play_time"]) \
-            .execute()
+    # Define cutoff time for duplicates
+    cutoff_time = datetime.utcnow() - timedelta(hours=DUPLICATE_CHECK_HOURS)
+    cutoff_iso = cutoff_time.isoformat()
 
-        if not existing.data or len(existing.data) == 0:
-            new_songs.append(song)  # Only append if not already in DB
+    # Fetch recent songs from Supabase to avoid duplicates
+    recent_songs = supabase.table("Test123Airplay") \
+        .select("song_title, artist_name, play_time") \
+        .gte("play_time", cutoff_iso) \
+        .execute()
 
-    if new_songs:
-        supabase.table("Test123Airplay").insert(new_songs).execute()
-        print(f"Inserted {len(new_songs)} new songs.")
-    else:
-        print("No new songs to insert; all fetched songs already exist.")
+    existing = {(row["song_title"], row["artist_name"], row["play_time"]) for row in recent_songs.data}
+
+    # Filter new songs
+    new_songs = [
+        song for song in songs
+        if (song["song_title"], song["artist_name"], song["play_time"]) not in existing
+    ]
+
+    if not new_songs:
+        print("No new songs to insert.")
+        return
+
+    # Bulk insert new songs
+    res = supabase.table("Test123Airplay").insert(new_songs).execute()
+    print(f"Inserted {len(new_songs)} new songs.")
 
 if __name__ == "__main__":
     songs = fetch_5fm_history()
-    insert_new_songs_only(songs)
+    insert_to_supabase(songs)
