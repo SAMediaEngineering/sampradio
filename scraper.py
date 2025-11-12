@@ -1,67 +1,56 @@
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from bs4 import BeautifulSoup
-import datetime
+import time
 
-# Supabase details
-SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhtYnFnZHF1aWtlc3lzYXNwc2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgzNDAzNjQsImV4cCI6MjA3MzkxNjM2NH0.MkPeVmG6pEonpgW01RuVP4xMZtWAer1qy3ASM5iye4Y"
-TABLE = "Test123Airplay"
+# 5FM static page (example)
+FIVE_FM_URL = "http://listen.5fm.co.za/listen5fm/"
 
-# Stations and CSS selectors (update Metro FM selectors after inspecting page)
-stations = {
-    "5FM": {
-        "url": "http://listen.5fm.co.za/listen5fm/",
-        "song_selector": ".td-player-bar__nowplaying__trackinfo__track-name span",
-        "artist_selector": "#td-player-bar__nowplaying__trackinfo__artist-name span"
-    },
-    "Metro FM": {
-        "url": "https://www.metrofm.co.za/metro-fm/listen-live/",
-        "song_selector": ".now-playing-song",    # placeholder
-        "artist_selector": ".now-playing-artist" # placeholder
-    }
-}
+# Metro FM live stream page (dynamic)
+METRO_FM_URL = "https://www.metrofm.co.za/metro-fm/listen-live/"
 
-def insert_airplay(station, song, artist, source_url):
-    data = {
-        "station_name": station,
-        "song_title": song,
-        "artist_name": artist,
-        "play_time": datetime.datetime.utcnow().isoformat(),
-        "source_url": source_url
-    }
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json"
-    }
+def get_5fm_nowplaying():
+    from requests import get
+    from bs4 import BeautifulSoup
+
     try:
-        response = requests.post(f"{SUPABASE_URL}/rest/v1/{TABLE}", json=data, headers=headers)
-        if response.status_code in [200, 201, 204]:
-            print(f"{station} - {song} inserted successfully")
-        else:
-            print(f"Failed to insert {station} - {song}: {response.text}")
-    except Exception as e:
-        print(f"Error inserting into Supabase for {station}: {e}")
-
-def scrape_station(station_name, config):
-    try:
-        response = requests.get(config["url"], verify=False)
+        response = get(FIVE_FM_URL)
         soup = BeautifulSoup(response.text, "html.parser")
-        song_elem = soup.select_one(config["song_selector"])
-        artist_elem = soup.select_one(config["artist_selector"])
-        if song_elem and artist_elem:
-            song = song_elem.text.strip()
-            artist = artist_elem.text.strip()
-            print(f"{station_name} is playing: {song} – {artist}")
-            insert_airplay(station_name, song, artist, config["url"])
-        else:
-            print(f"No song/artist found for {station_name}")
-    except Exception as e:
-        print(f"Error scraping {station_name}: {e}")
+        song_element = soup.select_one("#td-player-bar__nowplaying__trackinfo__track-name span")
+        artist_element = soup.select_one("#td-player-bar__nowplaying__trackinfo__artist-name span")
 
-def main():
-    for station_name, config in stations.items():
-        scrape_station(station_name, config)
+        if song_element and artist_element:
+            print(f"5FM Now Playing: {artist_element.text.strip()} - {song_element.text.strip()}")
+        else:
+            print("5FM: No song/artist found")
+    except Exception as e:
+        print(f"Error fetching 5FM: {e}")
+
+def get_metrofm_nowplaying():
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")  # Run in background
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+
+        driver = webdriver.Chrome(options=chrome_options)
+        driver.get(METRO_FM_URL)
+        time.sleep(5)  # wait for page JS to load
+
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        # Update this selector when you see the correct song/artist element
+        song_element = soup.select_one(".now-playing-song")
+        artist_element = soup.select_one(".now-playing-artist")
+
+        if song_element and artist_element:
+            print(f"Metro FM Now Playing: {artist_element.text.strip()} - {song_element.text.strip()}")
+        else:
+            print("Metro FM: No song/artist found (page might be dynamic)")
+
+        driver.quit()
+    except Exception as e:
+        print(f"Error fetching Metro FM: {e}")
 
 if __name__ == "__main__":
-    main()
+    get_5fm_nowplaying()
+    get_metrofm_nowplaying()
