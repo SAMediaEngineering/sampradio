@@ -33,7 +33,9 @@ def insert_airplay(station, song, artist, source_url):
 
 def scrape_station(station_name, url, song_selector, artist_selector):
     try:
-        response = requests.get(url)
+        # Bypass SSL verification for all stations
+        response = requests.get(url, verify=False)
+        
         soup = BeautifulSoup(response.text, "html.parser")
         song_element = soup.select_one(song_selector)
         artist_element = soup.select_one(artist_selector)
