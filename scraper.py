@@ -23,14 +23,12 @@ def fetch_5fm_history():
     try:
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-    except requests.RequestException as e:
-        print("Error fetching 5FM page:", e)
+    except requests.RequestException:
         return []
 
     soup = BeautifulSoup(response.text, "html.parser")
     songs = []
 
-    # Extract songs JSON from <script>
     scripts = soup.find_all("script")
     for s in scripts:
         if "var songs =" in s.text:
@@ -47,25 +45,17 @@ def fetch_5fm_history():
                         "play_time": datetime.fromtimestamp(song.get("timestamp", int(time.time() * 1000)) / 1000).isoformat(),
                         "created_at": datetime.utcnow().isoformat()
                     })
-            except json.JSONDecodeError as e:
-                print("Failed to decode songs JSON:", e)
+            except json.JSONDecodeError:
+                pass
             break
     return songs
 
 def insert_to_supabase(songs):
     if not songs:
-        print("No songs to insert.")
         return
 
-    # Bulk insert all songs at once
-    res = supabase.table("Test123Airplay").insert(songs).execute()
-
-    if res.status_code in (200, 201):
-        print(f"Successfully inserted {len(songs)} songs.")
-        for song in songs:
-            print(f"- {song['song_title']} – {song['artist_name']}")
-    else:
-        print(f"Failed to insert songs. Response: {res.data}")
+    # Insert songs silently
+    supabase.table("Test123Airplay").insert(songs).execute()
 
 if __name__ == "__main__":
     songs = fetch_5fm_history()
