@@ -9,6 +9,7 @@ from datetime import datetime
 SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
 SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhtYnFnZHF1aWtlc3lzYXNwc2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgzNDAzNjQsImV4cCI6MjA3MzkxNjM2NH0.MkPeVmG6pEonpgW01RuVP4xMZtWAer1qy3ASM5iye4Y"
 
+# Initialize Supabase client
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 def fetch_5fm_history():
@@ -43,8 +44,8 @@ def fetch_5fm_history():
                         "station_name": "5FM",
                         "song_title": song.get("title", "Unknown Title"),
                         "artist_name": song.get("artist", "Unknown Artist"),
-                        "play_time": datetime.fromtimestamp(song.get("timestamp", int(time.time() * 1000)) / 1000),
-                        "created_at": datetime.utcnow()
+                        "play_time": datetime.fromtimestamp(song.get("timestamp", int(time.time() * 1000)) / 1000).isoformat(),
+                        "created_at": datetime.utcnow().isoformat()
                     })
             except json.JSONDecodeError as e:
                 print("Failed to decode songs JSON:", e)
@@ -55,12 +56,16 @@ def insert_to_supabase(songs):
     if not songs:
         print("No songs to insert.")
         return
-    for song in songs:
-        res = supabase.table("Test123Airplay").insert(song).execute()
-        if res.status_code == 201:
-            print(f"Inserted: {song['song_title']} – {song['artist_name']}")
-        else:
-            print(f"Failed to insert: {song}, Response: {res.data}")
+
+    # Bulk insert all songs at once
+    res = supabase.table("Test123Airplay").insert(songs).execute()
+
+    if res.status_code in (200, 201):
+        print(f"Successfully inserted {len(songs)} songs.")
+        for song in songs:
+            print(f"- {song['song_title']} – {song['artist_name']}")
+    else:
+        print(f"Failed to insert songs. Response: {res.data}")
 
 if __name__ == "__main__":
     songs = fetch_5fm_history()
