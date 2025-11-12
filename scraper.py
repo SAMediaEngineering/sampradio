@@ -1,8 +1,16 @@
 import requests
+from bs4 import BeautifulSoup
+from supabase import create_client, Client
+import time
 import json
-import re
 
-def fetch_5fm_history_js():
+# Supabase credentials
+SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
+SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhtYnFnZHF1aWtlc3lzYXNwc2RvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgzNDAzNjQsImV4cCI6MjA3MzkxNjM2NH0.MkPeVmG6pEonpgW01RuVP4xMZtWAer1qy3ASM5iye4Y"
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def fetch_5fm_history():
     url = "https://player.listenlive.co/71331/en/songhistory"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -15,25 +23,42 @@ def fetch_5fm_history_js():
         response.raise_for_status()
     except requests.RequestException as e:
         print("Error fetching 5FM page:", e)
-        return
+        return []
 
-    # Extract the 'songs' JSON from the script tag
-    match = re.search(r"var songs = (\[.*?\]);", response.text, re.DOTALL)
-    if not match:
-        print("Could not find songs data in page.")
-        return
+    soup = BeautifulSoup(response.text, "html.parser")
+    songs = []
 
-    try:
-        songs = json.loads(match.group(1))
-    except json.JSONDecodeError as e:
-        print("Failed to parse songs JSON:", e)
-        return
+    # Extract songs JSON from <script>
+    scripts = soup.find_all("script")
+    for s in scripts:
+        if "var songs =" in s.text:
+            start = s.text.find("var songs =") + len("var songs =")
+            end = s.text.find("];", start) + 1
+            songs_json = s.text[start:end].strip()
+            try:
+                songs_list = json.loads(songs_json)
+                for song in songs_list:
+                    songs.append({
+                        "title": song.get("title", "Unknown Title"),
+                        "artist": song.get("artist", "Unknown Artist"),
+                        "timestamp": song.get("timestamp", int(time.time() * 1000))
+                    })
+            except json.JSONDecodeError as e:
+                print("Failed to decode songs JSON:", e)
+            break
+    return songs
 
-    print("Last songs played on 5FM:\n")
-    for s in songs:
-        title = s.get("title", "Unknown Title")
-        artist = s.get("artist", "Unknown Artist")
-        print(f"{title} – {artist}")
+def insert_to_supabase(songs):
+    if not songs:
+        print("No songs to insert.")
+        return
+    for song in songs:
+        res = supabase.table("airplay_5fm").insert(song).execute()
+        if res.status_code == 201:
+            print(f"Inserted: {song['title']} – {song['artist']}")
+        else:
+            print(f"Failed to insert: {song}, Response: {res.data}")
 
 if __name__ == "__main__":
-    fetch_5fm_history_js()
+    songs = fetch_5fm_history()
+    insert_to_supabase(songs)
