@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from supabase import create_client, Client
 import time
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 # Supabase credentials
 SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
@@ -19,8 +19,15 @@ STATIONS = {
     "RSG": "https://player.listenlive.co/71471/en/songhistory",
 }
 
-# --- SAST TIMEZONE ---
-SAST = timezone(timedelta(hours=2))  # UTC+2
+# --- HELPER FUNCTION: Convert timestamp to SAST ---
+def to_sast(ts=None):
+    """
+    Convert a Unix timestamp or current time to SAST (UTC+2) string.
+    """
+    if ts is None:
+        ts = time.time()
+    dt = datetime.utcfromtimestamp(ts) + timedelta(hours=2)  # UTC+2
+    return dt.strftime("%Y-%m-%d %H:%M:%S")  # human-readable, SAST
 
 # --- FETCH SONGS FOR A GIVEN STATION ---
 def fetch_station_history(station_name, url):
@@ -53,8 +60,8 @@ def fetch_station_history(station_name, url):
                         "station_name": station_name,
                         "song_title": song.get("title", "Unknown Title"),
                         "artist_name": song.get("artist", "Unknown Artist"),
-                        "play_time": datetime.fromtimestamp(timestamp, tz=SAST).isoformat(),
-                        "created_at": datetime.now(tz=SAST).isoformat()
+                        "play_time": to_sast(timestamp),      # SAST manually
+                        "created_at": to_sast()               # current SAST
                     })
             except json.JSONDecodeError:
                 print(f"Failed to decode songs JSON for {station_name}")
