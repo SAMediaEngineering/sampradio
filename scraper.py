@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 from supabase import create_client, Client
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # Supabase credentials
 SUPABASE_URL = "https://xmbqgdquikesysaspsdo.supabase.co"
@@ -18,6 +18,9 @@ STATIONS = {
     "KFM 94.5": "https://player.listenlive.co/45781/en/songhistory",
     "RSG": "https://player.listenlive.co/71471/en/songhistory",
 }
+
+# --- SAST TIMEZONE ---
+SAST = timezone(timedelta(hours=2))  # UTC+2
 
 # --- FETCH SONGS FOR A GIVEN STATION ---
 def fetch_station_history(station_name, url):
@@ -45,14 +48,13 @@ def fetch_station_history(station_name, url):
             try:
                 songs_list = json.loads(songs_json)
                 for song in songs_list:
+                    timestamp = song.get("timestamp", int(time.time() * 1000)) / 1000
                     songs.append({
                         "station_name": station_name,
                         "song_title": song.get("title", "Unknown Title"),
                         "artist_name": song.get("artist", "Unknown Artist"),
-                        "play_time": datetime.fromtimestamp(
-                            song.get("timestamp", int(time.time() * 1000)) / 1000
-                        ).isoformat(),
-                        "created_at": datetime.utcnow().isoformat()
+                        "play_time": datetime.fromtimestamp(timestamp, tz=SAST).isoformat(),
+                        "created_at": datetime.now(tz=SAST).isoformat()
                     })
             except json.JSONDecodeError:
                 print(f"Failed to decode songs JSON for {station_name}")
